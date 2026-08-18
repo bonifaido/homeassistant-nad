@@ -76,17 +76,38 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
         self.options = entry.options
         self.unique_id = entry.entry_id
 
+        self.receiver = self._create_receiver()
+
+    def _create_receiver(self):
+        """Create a fresh receiver/transport instance from the stored config."""
         config_type = self.config[CONF_TYPE]
         if config_type == CONF_TYPE_SERIAL:
             serial_port = self.config[CONF_SERIAL_PORT]
-            self.receiver = NADReceiver(serial_port)
+            return NADReceiver(serial_port)
         elif config_type == CONF_TYPE_TELNET:
             host = self.config[CONF_HOST]
             port = self.config[CONF_PORT]
-            self.receiver = NADReceiverTelnet(host, port)
+            return NADReceiverTelnet(host, port)
         elif config_type == CONF_TYPE_TCP:
             host = self.config[CONF_HOST]
-            self.receiver = NADReceiverTCP(host)
+            return NADReceiverTCP(host)
+
+    def _close_receiver(self):
+        """Best-effort close of the current transport connection."""
+        transport = getattr(self.receiver, "transport", None)
+        try:
+            if hasattr(transport, "close_connection"):
+                transport.close_connection()
+            elif hasattr(transport, "ser") and transport.ser.is_open:
+                transport.ser.close()
+        except Exception as ex:  # noqa: BLE001
+            _LOGGER.debug("Error closing NAD receiver connection: %s", ex)
+
+    def _reconnect(self):
+        """Tear down and recreate the receiver connection."""
+        _LOGGER.debug("Reconnecting to NAD receiver")
+        self._close_receiver()
+        self.receiver = self._create_receiver()
 
     async def connect(self) -> bool:
         if not self.model:
@@ -114,7 +135,7 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
             return True
 
     async def disconnect(self):
-        pass
+        self._close_receiver()
 
     @callback
     def async_add_listener(
@@ -169,17 +190,31 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
         if self.config[CONF_TYPE] == CONF_TYPE_SERIAL:
             self.receiver.transport.ser.reset_input_buffer()
 
-        try:
-            msg = self.receiver.transport.communicate(cmd)
-            _LOGGER.debug("sent: '%s' reply: '%s'", command, msg)
+        for attempt in (1, 2):
+            try:
+                msg = self.receiver.transport.communicate(cmd)
+                _LOGGER.debug("sent: '%s' reply: '%s'", command, msg)
 
-            if msg == "":
-                raise CommandNotSupportedError()
+                if msg == "":
+                    raise CommandNotSupportedError()
 
-            if msg.lower().startswith(command.lower() + "="):
-                return msg.split("=")[1]
-        except UnicodeDecodeError as ex:
-            _LOGGER.error(ex)
+                if msg.lower().startswith(command.lower() + "="):
+                    return msg.split("=")[1]
+
+                return None
+            except UnicodeDecodeError as ex:
+                _LOGGER.error(ex)
+                return None
+            except CommandNotSupportedError:
+                raise
+            except Exception as ex:  # noqa: BLE001
+                # The connection may have been dropped (e.g. ser2net kicked us
+                # off, or an idle timeout closed the socket). Reconnect once
+                # and retry before giving up.
+                if attempt == 2:
+                    raise CommandNotSupportedError() from ex
+                _LOGGER.debug("Connection error (%s), reconnecting", ex)
+                self._reconnect()
 
         return None
 
