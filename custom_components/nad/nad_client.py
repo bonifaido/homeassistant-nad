@@ -11,6 +11,7 @@ flapping entity availability.
 
 import logging
 import socket
+import threading
 from typing import Optional
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ class NADSocketClient:
         self._timeout = timeout
         self._sock: Optional[socket.socket] = None
         self._buffer = b""
+        self._lock = threading.Lock()
 
     def connect(self) -> None:
         """Open (or reopen) the TCP connection."""
@@ -71,29 +73,30 @@ class NADSocketClient:
 
     def command(self, command: str, operator: str, value=None) -> Optional[str]:
         """Send a command and return the value from the reply, or None."""
-        if self._sock is None:
-            raise NADConnectionError("Not connected")
+        with self._lock:
+            if self._sock is None:
+                raise NADConnectionError("Not connected")
 
-        cmd = f"{command}{operator}"
-        if value is not None and value != "":
-            cmd = f"{cmd}{value}"
+            cmd = f"{command}{operator}"
+            if value is not None and value != "":
+                cmd = f"{cmd}{value}"
 
-        try:
-            self._sock.sendall(f"\n{cmd}\r".encode())
-            reply = self._read_reply(command)
-        except (OSError, socket.timeout) as ex:
-            raise NADConnectionError(str(ex)) from ex
+            try:
+                self._sock.sendall(f"\n{cmd}\r".encode())
+                reply = self._read_reply(command)
+            except (OSError, socket.timeout) as ex:
+                raise NADConnectionError(str(ex)) from ex
 
-        if not reply:
+            if not reply:
+                return None
+
+            _LOGGER.debug("sent: '%s' reply: '%s'", cmd, reply)
+
+            prefix = f"{command.lower()}="
+            if reply.lower().startswith(prefix):
+                return reply.split("=", 1)[1]
+
             return None
-
-        _LOGGER.debug("sent: '%s' reply: '%s'", cmd, reply)
-
-        prefix = f"{command.lower()}="
-        if reply.lower().startswith(prefix):
-            return reply.split("=", 1)[1]
-
-        return None
 
     def _read_reply(self, command: str) -> str:
         """Read until the reply matches the command that was sent."""
