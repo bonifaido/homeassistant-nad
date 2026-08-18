@@ -141,7 +141,22 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
                 sw_version=self.version,
             )
 
-            self.sources = self.get_sources()
+            if self.model.replace(" ", "").upper() == "C328":
+                self.sources = {
+                    source: source
+                    for source in (
+                        "TV",
+                        "PHONO",
+                        "COAX1",
+                        "COAX2",
+                        "OPT1",
+                        "OPT2",
+                        "STREAM",
+                        "BT",
+                    )
+                }
+            else:
+                self.sources = self.get_sources()
 
             return True
 

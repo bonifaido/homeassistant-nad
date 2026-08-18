@@ -80,7 +80,7 @@ class NADSocketClient:
 
         try:
             self._sock.sendall(f"\n{cmd}\r".encode())
-            reply = self._read_reply()
+            reply = self._read_reply(command)
         except (OSError, socket.timeout) as ex:
             raise NADConnectionError(str(ex)) from ex
 
@@ -95,13 +95,24 @@ class NADSocketClient:
 
         return None
 
-    def _read_reply(self) -> str:
-        """Read until a full CR-terminated line has been received."""
-        while b"\r" not in self._buffer:
-            chunk = self._sock.recv(256)
-            if not chunk:
-                raise NADConnectionError("Connection closed by remote host")
-            self._buffer += chunk
+    def _read_reply(self, command: str) -> str:
+        """Read until the reply matches the command that was sent."""
+        prefix = f"{command.lower()}="
 
-        line, _, self._buffer = self._buffer.partition(b"\r")
-        return line.strip().decode(errors="replace")
+        while True:
+            while b"\r" not in self._buffer:
+                chunk = self._sock.recv(256)
+                if not chunk:
+                    raise NADConnectionError("Connection closed by remote host")
+                self._buffer += chunk
+
+            line, _, self._buffer = self._buffer.partition(b"\r")
+            reply = line.strip().decode(errors="replace")
+            if reply.lower().startswith(prefix):
+                return reply
+
+            _LOGGER.debug(
+                "Discarding stale NAD reply while waiting for %s: %s",
+                command,
+                reply,
+            )
