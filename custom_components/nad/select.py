@@ -4,6 +4,7 @@ from homeassistant.components.media_player.const import MediaPlayerState
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -274,15 +275,28 @@ class NADReceiverSelect(CoordinatorEntity, SelectEntity):
             if self._attr_current_option == option:
                 return
 
-            response = self.coordinator.exec_command(
-                self.entity_description.key, "=", option
-            )
-            if response is not None:
-                self._attr_current_option = response
-                self._attr_available = True
-            else:
-                _LOGGER.error("Failed to set %s to %s", self.name, option)
+            try:
+                response = await self.hass.async_add_executor_job(
+                    self.coordinator.exec_command,
+                    self.entity_description.key,
+                    "=",
+                    option,
+                )
+            except Exception as ex:  # noqa: BLE001
+                _LOGGER.error("Failed to set %s to %s: %s", self.name, option, ex)
+                raise HomeAssistantError(
+                    f"Unable to select {option} on {self.name}"
+                ) from ex
+
+            if response is None:
+                _LOGGER.error("Failed to set %s to %s: no response", self.name, option)
                 self._attr_available = False
+                raise HomeAssistantError(
+                    f"No response while selecting {option} on {self.name}"
+                )
+
+            self._attr_current_option = response
+            self._attr_available = True
         else:
             self._attr_available = False
 
