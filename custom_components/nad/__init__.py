@@ -87,7 +87,9 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
         elif config_type == CONF_TYPE_TELNET:
             host = self.config[CONF_HOST]
             port = self.config[CONF_PORT]
-            return NADReceiverTelnet(host, port)
+            # Default library timeout (1s) is too tight over a serial-to-network
+            # bridge (e.g. ser2net) and causes false disconnects/availability flips.
+            return NADReceiverTelnet(host, port, timeout=5)
         elif config_type == CONF_TYPE_TCP:
             host = self.config[CONF_HOST]
             return NADReceiverTCP(host)
