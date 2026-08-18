@@ -37,23 +37,45 @@ async def async_setup_entry(
     # Fetch initial data so we have data when entities subscribe
     # await coordinator.async_config_entry_first_refresh()
 
-    entity_descriptions = [
-        NumberEntityDescription(
-            key="Main.Brightness",
-            name="VFD Brightness",
-            entity_category=EntityCategory.CONFIG,
-            native_min_value=0,
-            native_max_value=3,
-            native_step=1,
-            entity_registry_enabled_default=False,
-        ),
-        NumberEntityDescription(
-            key="Main.Bass",
-            name="Bass Tone Control",
-            native_unit_of_measurement=UnitOfSoundPressure.DECIBEL,
-            native_min_value=-10,
-            native_max_value=10,
-        ),
+    if coordinator.model and coordinator.model.replace(" ", "").upper() == "C328":
+        entity_descriptions = [
+            NumberEntityDescription(
+                key="Main.Brightness",
+                name="VFD Brightness",
+                entity_category=EntityCategory.CONFIG,
+                native_min_value=0,
+                native_max_value=3,
+                native_step=1,
+                entity_registry_enabled_default=False,
+            ),
+            NumberEntityDescription(
+                key="Main.StandbyTime",
+                name="Standby Time",
+                entity_category=EntityCategory.CONFIG,
+                native_min_value=0,
+                native_max_value=120,
+                native_step=1,
+                entity_registry_enabled_default=False,
+            ),
+        ]
+    else:
+        entity_descriptions = [
+            NumberEntityDescription(
+                key="Main.Brightness",
+                name="VFD Brightness",
+                entity_category=EntityCategory.CONFIG,
+                native_min_value=0,
+                native_max_value=3,
+                native_step=1,
+                entity_registry_enabled_default=False,
+            ),
+            NumberEntityDescription(
+                key="Main.Bass",
+                name="Bass Tone Control",
+                native_unit_of_measurement=UnitOfSoundPressure.DECIBEL,
+                native_min_value=-10,
+                native_max_value=10,
+            ),
         NumberEntityDescription(
             key="Main.Distance.BackLeft",
             name="Distance Back Left",
