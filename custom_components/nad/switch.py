@@ -31,9 +31,24 @@ async def async_setup_entry(
 
     entity_descriptions = [
         SwitchEntityDescription(
+            key="Main.AutoSense",
+            name="Auto Sense",
+            entity_category=EntityCategory.CONFIG,
+        ),
+        SwitchEntityDescription(
+            key="Main.AutoStandby",
+            name="Auto Standby",
+            entity_category=EntityCategory.CONFIG,
+        ),
+        SwitchEntityDescription(
             key="Main.Dimmer",
             name="Front VFD Dimmer",
             icon="mdi:text-short",
+            entity_category=EntityCategory.CONFIG,
+        ),
+        SwitchEntityDescription(
+            key="Main.EQ",
+            name="Bass EQ",
             entity_category=EntityCategory.CONFIG,
         ),
         SwitchEntityDescription(

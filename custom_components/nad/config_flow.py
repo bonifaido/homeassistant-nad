@@ -49,6 +49,23 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+
+def _volume_options_for_model(model: str) -> dict[str, int]:
+    """Return sensible volume defaults for a detected model."""
+    normalized_model = model.replace(" ", "").upper()
+    if normalized_model == "C328":
+        return {
+            CONF_MIN_VOLUME: -80,
+            CONF_MAX_VOLUME: 12,
+            CONF_VOLUME_STEP: 1,
+        }
+
+    return {
+        CONF_MIN_VOLUME: CONF_DEFAULT_MIN_VOLUME,
+        CONF_MAX_VOLUME: CONF_DEFAULT_MAX_VOLUME,
+        CONF_VOLUME_STEP: CONF_DEFAULT_VOLUME_STEP,
+    }
+
 STEP_SETUP_TELNET_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_HOST): TextSelector(),
@@ -189,6 +206,8 @@ class NADReceiverConfigFlow(ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(serial_port)
         self._abort_if_unique_id_configured()
 
+        model = "Unknown"
+
         if errors.get(CONF_SERIAL_PORT) is None:
             # Test if we can connect to the device and get model
             try:
@@ -208,11 +227,7 @@ class NADReceiverConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_TYPE: CONF_TYPE_SERIAL,
                 CONF_SERIAL_PORT: serial_port,
             },
-            {
-                CONF_MIN_VOLUME: CONF_DEFAULT_MIN_VOLUME,
-                CONF_MAX_VOLUME: CONF_DEFAULT_MAX_VOLUME,
-                CONF_VOLUME_STEP: CONF_DEFAULT_VOLUME_STEP,
-            },
+            _volume_options_for_model(model),
         )
 
     async def async_step_setup_telnet(
@@ -247,6 +262,8 @@ class NADReceiverConfigFlow(ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(host)
         self._abort_if_unique_id_configured()
 
+        model = "Unknown"
+
         try:
             # Test if we can connect to the device and get model
             receiver = NADReceiverTelnet(host, port)
@@ -260,10 +277,7 @@ class NADReceiverConfigFlow(ConfigFlow, domain=DOMAIN):
         return (
             f"NAD {model}",
             {CONF_TYPE: CONF_TYPE_TELNET, CONF_HOST: host, CONF_PORT: port},
-            {
-                CONF_MIN_VOLUME: CONF_DEFAULT_MIN_VOLUME,
-                CONF_MAX_VOLUME: CONF_DEFAULT_MAX_VOLUME,
-            },
+            _volume_options_for_model(model),
         )
 
     async def async_step_setup_tcp(
@@ -297,6 +311,8 @@ class NADReceiverConfigFlow(ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(host)
         self._abort_if_unique_id_configured()
 
+        model = "Unknown"
+
         try:
             # Test if we can connect to the device and get model
             receiver = NADReceiverTCP(host)
@@ -310,11 +326,7 @@ class NADReceiverConfigFlow(ConfigFlow, domain=DOMAIN):
         return (
             f"NAD {model}",
             {CONF_TYPE: CONF_TYPE_TCP, CONF_HOST: host},
-            {
-                CONF_MIN_VOLUME: CONF_DEFAULT_MIN_VOLUME,
-                CONF_MAX_VOLUME: CONF_DEFAULT_MAX_VOLUME,
-                CONF_VOLUME_STEP: CONF_DEFAULT_VOLUME_STEP,
-            },
+            _volume_options_for_model(model),
         )
 
     @staticmethod

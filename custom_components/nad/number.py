@@ -39,6 +39,15 @@ async def async_setup_entry(
 
     entity_descriptions = [
         NumberEntityDescription(
+            key="Main.Brightness",
+            name="VFD Brightness",
+            entity_category=EntityCategory.CONFIG,
+            native_min_value=0,
+            native_max_value=3,
+            native_step=1,
+            entity_registry_enabled_default=False,
+        ),
+        NumberEntityDescription(
             key="Main.Bass",
             name="Bass Tone Control",
             native_unit_of_measurement=UnitOfSoundPressure.DECIBEL,

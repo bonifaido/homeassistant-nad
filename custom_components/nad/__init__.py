@@ -2,7 +2,7 @@
 
 import logging
 from datetime import timedelta
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import homeassistant.helpers.config_validation as cv
 import serial

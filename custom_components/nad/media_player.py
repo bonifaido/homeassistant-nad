@@ -34,6 +34,13 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+C328_SOURCES = ["TV", "PHONO", "COAX1", "COAX2", "OPT1", "OPT2", "STREAM", "BT"]
+
+
+def _is_c328_model(model: str | None) -> bool:
+    """Return whether the connected device is a C328."""
+    return bool(model and model.replace(" ", "").upper() == "C328")
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -79,7 +86,11 @@ class NAD(CoordinatorEntity, MediaPlayerEntity):
             CONF_MAX_VOLUME, CONF_DEFAULT_MAX_VOLUME
         )
 
-        self._source_dict = coordinator.sources
+        if _is_c328_model(coordinator.model):
+            self._source_dict = {source: source for source in C328_SOURCES}
+        else:
+            self._source_dict = coordinator.sources
+
         self._reverse_mapping = {value: key for key, value in self._source_dict.items()}
 
         coordinator.add_listener_command(self.zone + ".Mute")
@@ -120,8 +131,12 @@ class NAD(CoordinatorEntity, MediaPlayerEntity):
                 # instead they only support stepping the volume up or down
                 self._attr_volume_level = None
 
-            source = int(self.coordinator.data.get(self.zone + ".Source"))
-            self._attr_source = self._source_dict.get(source)
+            source = self.coordinator.data.get(self.zone + ".Source")
+            if source is not None:
+                if source.lstrip("-").isnumeric():
+                    self._attr_source = self._source_dict.get(int(source), source)
+                else:
+                    self._attr_source = self._source_dict.get(source, source)
 
         self.async_write_ha_state()
 
@@ -186,14 +201,19 @@ class NAD(CoordinatorEntity, MediaPlayerEntity):
             source_id = self._reverse_mapping[source]
         elif source.isnumeric() and int(source) in self._source_dict:
             source_id = source
+        elif source in self._source_dict:
+            source_id = source
         else:
             raise HomeAssistantError(f"Source {source} invalid")
 
         _LOGGER.debug("Source ID: %s", source_id)
 
         response = self.coordinator.exec_command(self.zone + ".Source", "=", source_id)
-        if response.isnumeric():
-            self._attr_source = self._source_dict.get(int(response))
+        if response is not None:
+            if response.lstrip("-").isnumeric():
+                self._attr_source = self._source_dict.get(int(response), response)
+            else:
+                self._attr_source = self._source_dict.get(response, response)
             self.schedule_update_ha_state()
 
     @property
