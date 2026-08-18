@@ -24,6 +24,8 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from nad_receiver import NADReceiver, NADReceiverTCP, NADReceiverTelnet
 
+from .nad_client import NADConnectionError, NADSocketClient
+
 from .const import (
     CONF_SERIAL_PORT,
     CONF_TYPE_SERIAL,
@@ -87,15 +89,22 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
         elif config_type == CONF_TYPE_TELNET:
             host = self.config[CONF_HOST]
             port = self.config[CONF_PORT]
-            # Default library timeout (1s) is too tight over a serial-to-network
-            # bridge (e.g. ser2net) and causes false disconnects/availability flips.
-            return NADReceiverTelnet(host, port, timeout=5)
+            # Direct, dedicated raw TCP client instead of the generic library's
+            # telnet transport: no unneeded IAC negotiation, a longer default
+            # timeout, and persistent read buffering across commands.
+            client = NADSocketClient(host, port)
+            client.connect()
+            return client
         elif config_type == CONF_TYPE_TCP:
             host = self.config[CONF_HOST]
             return NADReceiverTCP(host)
 
     def _close_receiver(self):
         """Best-effort close of the current transport connection."""
+        if isinstance(self.receiver, NADSocketClient):
+            self.receiver.close()
+            return
+
         transport = getattr(self.receiver, "transport", None)
         try:
             if hasattr(transport, "close_connection"):
@@ -185,15 +194,18 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
         return True
 
     def exec_command(self, command: str, operator: str, value: Optional = None):
-        cmd = f"{command}{operator}"
-        if value:
-            cmd = f"{cmd}{value}"
-
         if self.config[CONF_TYPE] == CONF_TYPE_SERIAL:
             self.receiver.transport.ser.reset_input_buffer()
 
         for attempt in (1, 2):
             try:
+                if isinstance(self.receiver, NADSocketClient):
+                    return self.receiver.command(command, operator, value)
+
+                cmd = f"{command}{operator}"
+                if value:
+                    cmd = f"{cmd}{value}"
+
                 msg = self.receiver.transport.communicate(cmd)
                 _LOGGER.debug("sent: '%s' reply: '%s'", command, msg)
 
@@ -223,7 +235,9 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch data from NAD Receiver."""
         try:
-            power_state = self.exec_command("Main.Power", "?")
+            power_state = await self.hass.async_add_executor_job(
+                self.exec_command, "Main.Power", "?"
+            )
         except CommandNotSupportedError:
             self.power_state = None
             raise UpdateFailed("Error communicating with NAD Receiver")
@@ -246,7 +260,12 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
 
         for command in self._listener_commands:
             if command not in data:
-                data[command] = self.exec_command(command, "?")
+                try:
+                    data[command] = await self.hass.async_add_executor_job(
+                        self.exec_command, command, "?"
+                    )
+                except CommandNotSupportedError:
+                    data[command] = None
 
         return data
 

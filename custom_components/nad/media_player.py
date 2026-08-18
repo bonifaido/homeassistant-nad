@@ -19,6 +19,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from nad_receiver import NADReceiver, NADReceiverTCP, NADReceiverTelnet
 
 from . import NADReceiverCoordinator
+from .nad_client import NADSocketClient
 from .const import (
     CONF_DEFAULT_MAX_VOLUME,
     CONF_DEFAULT_MIN_VOLUME,
@@ -55,8 +56,8 @@ async def async_setup_entry(
 
     if isinstance(coordinator.receiver, NADReceiverTCP):
         async_add_entities([NADtcp(coordinator)])
-    elif isinstance(coordinator.receiver, NADReceiverTelnet) or isinstance(
-        coordinator.receiver, NADReceiver
+    elif isinstance(
+        coordinator.receiver, (NADReceiverTelnet, NADReceiver, NADSocketClient)
     ):
         async_add_entities([NADMain(coordinator), NADZone2(coordinator)])
 

@@ -31,6 +31,7 @@ from homeassistant.helpers.selector import (
 from nad_receiver import NADReceiver, NADReceiverTCP, NADReceiverTelnet
 
 from . import CommandNotSupportedError, NADReceiverCoordinator
+from .nad_client import NADConnectionError, NADSocketClient
 from .const import (
     CONF_DEFAULT_MAX_VOLUME,
     CONF_DEFAULT_MIN_VOLUME,
@@ -266,11 +267,17 @@ class NADReceiverConfigFlow(ConfigFlow, domain=DOMAIN):
 
         try:
             # Test if we can connect to the device and get model
-            receiver = NADReceiverTelnet(host, port)
-            model = receiver.main_model("?")
+            client = NADSocketClient(host, port)
+            client.connect()
+            try:
+                model = client.command("Main.Model", "?")
+                if not model:
+                    raise CommandNotSupportedError("No model reported")
+            finally:
+                client.close()
 
             _LOGGER.info("Device %s available", host)
-        except CommandNotSupportedError as ex:
+        except (CommandNotSupportedError, NADConnectionError):
             errors["base"] = "cannot_connect"
 
         # Return info that you want to store in the config entry.
