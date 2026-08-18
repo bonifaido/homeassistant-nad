@@ -46,16 +46,6 @@ async def async_setup_entry(
                 native_min_value=0,
                 native_max_value=3,
                 native_step=1,
-                entity_registry_enabled_default=False,
-            ),
-            NumberEntityDescription(
-                key="Main.StandbyTime",
-                name="Standby Time",
-                entity_category=EntityCategory.CONFIG,
-                native_min_value=0,
-                native_max_value=120,
-                native_step=1,
-                entity_registry_enabled_default=False,
             ),
         ]
     else:
