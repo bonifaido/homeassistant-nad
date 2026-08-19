@@ -29,7 +29,7 @@ class NADSocketClient:
     against a NAD C328 over a ser2net raw TCP bridge.
     """
 
-    def __init__(self, host: str, port: int, timeout: float = 5.0) -> None:
+    def __init__(self, host: str, port: int, timeout: float = 10.0) -> None:
         self._host = host
         self._port = port
         self._timeout = timeout
@@ -57,6 +57,7 @@ class NADSocketClient:
 
         self._sock = sock
         self._buffer = b""
+        self._drain_pending_input()
 
     def close(self) -> None:
         """Close the connection, if open."""
@@ -72,6 +73,25 @@ class NADSocketClient:
     def is_connected(self) -> bool:
         return self._sock is not None
 
+    def _drain_pending_input(self) -> None:
+        """Discard output already queued by earlier commands or button presses."""
+        if self._sock is None:
+            return
+
+        original_timeout = self._sock.gettimeout()
+        self._sock.settimeout(0.05)
+        try:
+            while True:
+                try:
+                    chunk = self._sock.recv(4096)
+                    if not chunk:
+                        break
+                    _LOGGER.debug("Draining unsolicited NAD bytes: %r", chunk)
+                except socket.timeout:
+                    break
+        finally:
+            self._sock.settimeout(original_timeout)
+
     def command(self, command: str, operator: str, value=None) -> Optional[str]:
         """Send a command and return the value from the reply, or None."""
         with self._lock:
@@ -83,6 +103,7 @@ class NADSocketClient:
                 cmd = f"{cmd}{value}"
 
             try:
+                self._drain_pending_input()
                 self._sock.sendall(f"\n{cmd}\r".encode())
                 reply = self._read_reply(command)
             except (OSError, socket.timeout) as ex:
