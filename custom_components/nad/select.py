@@ -289,13 +289,29 @@ class NADReceiverSelect(CoordinatorEntity, SelectEntity):
                 ) from ex
 
             if response is None:
-                _LOGGER.error("Failed to set %s to %s: no response", self.name, option)
-                self._attr_available = False
-                raise HomeAssistantError(
-                    f"No response while selecting {option} on {self.name}"
+                _LOGGER.debug(
+                    "No set acknowledgement for %s; querying the current value",
+                    self.name,
                 )
 
-            self._attr_current_option = response
+            current_option = await self.hass.async_add_executor_job(
+                self.coordinator.exec_command,
+                self.entity_description.key,
+                "?",
+            )
+            if current_option != option:
+                _LOGGER.error(
+                    "Failed to set %s to %s; receiver reports %r",
+                    self.name,
+                    option,
+                    current_option,
+                )
+                self._attr_available = False
+                raise HomeAssistantError(
+                    f"Unable to select {option} on {self.name}"
+                )
+
+            self._attr_current_option = current_option
             self._attr_available = True
         else:
             self._attr_available = False
