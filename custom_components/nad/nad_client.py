@@ -36,6 +36,7 @@ class NADSocketClient:
         self._sock: Optional[socket.socket] = None
         self._buffer = b""
         self._lock = threading.Lock()
+        self._max_buffer_size = 8192
 
     def connect(self) -> None:
         """Open (or reopen) the TCP connection."""
@@ -108,6 +109,8 @@ class NADSocketClient:
                 if not chunk:
                     raise NADConnectionError("Connection closed by remote host")
                 self._buffer += chunk
+                if len(self._buffer) > self._max_buffer_size:
+                    raise NADConnectionError("Unterminated NAD response")
 
             line, _, self._buffer = self._buffer.partition(b"\r")
             reply = line.strip().decode(errors="replace")
@@ -115,7 +118,7 @@ class NADSocketClient:
                 return reply
 
             _LOGGER.debug(
-                "Discarding stale NAD reply while waiting for %s: %s",
+                "Discarding unsolicited NAD text while waiting for %s: %s",
                 command,
                 reply,
             )
