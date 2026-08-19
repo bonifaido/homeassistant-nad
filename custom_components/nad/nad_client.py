@@ -37,6 +37,7 @@ class NADSocketClient:
         self._buffer = b""
         self._lock = threading.Lock()
         self._max_buffer_size = 8192
+        self._unsolicited: dict[str, str] = {}
 
     def connect(self) -> None:
         """Open (or reopen) the TCP connection."""
@@ -68,10 +69,27 @@ class NADSocketClient:
                 pass
         self._sock = None
         self._buffer = b""
+        self._unsolicited = {}
 
     @property
     def is_connected(self) -> bool:
         return self._sock is not None
+
+    def take_unsolicited(self) -> dict[str, str]:
+        """Return and clear valid state messages received out of band."""
+        with self._lock:
+            updates = self._unsolicited
+            self._unsolicited = {}
+            return updates
+
+    def _save_unsolicited(self, reply: str) -> None:
+        """Save a valid command/value line emitted without a request."""
+        if "=" not in reply:
+            return
+
+        command, value = reply.split("=", 1)
+        if command and value:
+            self._unsolicited[command] = value
 
     def _drain_pending_input(self) -> None:
         """Discard output already queued by earlier commands or button presses."""
@@ -86,7 +104,12 @@ class NADSocketClient:
                     chunk = self._sock.recv(4096)
                     if not chunk:
                         break
-                    _LOGGER.debug("Draining unsolicited NAD bytes: %r", chunk)
+                    self._buffer += chunk
+                    while b"\r" in self._buffer:
+                        line, _, self._buffer = self._buffer.partition(b"\r")
+                        reply = line.strip().decode(errors="replace")
+                        _LOGGER.debug("Draining unsolicited NAD text: %s", reply)
+                        self._save_unsolicited(reply)
                 except socket.timeout:
                     break
         finally:
@@ -143,3 +166,4 @@ class NADSocketClient:
                 command,
                 reply,
             )
+            self._save_unsolicited(reply)

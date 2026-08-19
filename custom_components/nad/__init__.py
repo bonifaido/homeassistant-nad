@@ -215,7 +215,9 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
         for attempt in (1, 2):
             try:
                 if isinstance(self.receiver, NADSocketClient):
-                    return self.receiver.command(command, operator, value)
+                    response = self.receiver.command(command, operator, value)
+                    self._capture_unsolicited()
+                    return response
 
                 cmd = f"{command}{operator}"
                 if value:
@@ -247,6 +249,16 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
 
         return None
 
+    def _capture_unsolicited(self) -> None:
+        """Merge unsolicited NAD state into the next coordinator update."""
+        if isinstance(self.receiver, NADSocketClient):
+            updates = self.receiver.take_unsolicited()
+            if updates:
+                _LOGGER.debug("Received unsolicited NAD state: %s", updates)
+                if not hasattr(self, "_pending_unsolicited"):
+                    self._pending_unsolicited = {}
+                self._pending_unsolicited.update(updates)
+
     async def _async_update_data(self):
         """Fetch data from NAD Receiver."""
         try:
@@ -271,6 +283,8 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
             self.power_state = MediaPlayerState.OFF
 
         data = {}
+        data.update(getattr(self, "_pending_unsolicited", {}))
+        self._pending_unsolicited = {}
         data["Main.Power"] = power_state
 
         for command in self._listener_commands:
