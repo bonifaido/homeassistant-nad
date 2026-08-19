@@ -29,7 +29,7 @@ class NADSocketClient:
     against a NAD C328 over a ser2net raw TCP bridge.
     """
 
-    def __init__(self, host: str, port: int, timeout: float = 2.0) -> None:
+    def __init__(self, host: str, port: int, timeout: float = 10.0) -> None:
         self._host = host
         self._port = port
         self._timeout = timeout

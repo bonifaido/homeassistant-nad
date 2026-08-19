@@ -125,14 +125,20 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
             # Open the connection by requesting the model
             try:
                 if isinstance(self.receiver, NADSocketClient):
-                    snapshot = self.receiver.main_snapshot()
+                    snapshot = await self.hass.async_add_executor_job(
+                        self.receiver.main_snapshot
+                    )
                     self._pending_unsolicited = snapshot
                     self.model = snapshot.get("Main.Model")
                     self.version = snapshot.get("Main.Version")
                 else:
-                    self.model = self.exec_command("Main.Model", "?")
-                    self.version = self.exec_command("Main.Version", "?")
-            except CommandNotSupportedError:
+                    self.model = await self.hass.async_add_executor_job(
+                        self.exec_command, "Main.Model", "?"
+                    )
+                    self.version = await self.hass.async_add_executor_job(
+                        self.exec_command, "Main.Version", "?"
+                    )
+            except (CommandNotSupportedError, NADConnectionError):
                 return False
 
             if not self.model:
