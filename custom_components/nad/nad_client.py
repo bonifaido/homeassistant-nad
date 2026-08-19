@@ -143,6 +143,45 @@ class NADSocketClient:
 
             return None
 
+    def main_snapshot(self) -> dict[str, str]:
+        """Return the complete Main? status snapshot from a C328."""
+        with self._lock:
+            if self._sock is None:
+                raise NADConnectionError("Not connected")
+
+            try:
+                self._drain_pending_input()
+                self._sock.sendall(b"\nMain?\r")
+                payload = self._read_until_marker(
+                    b"************Main information end ************"
+                )
+            except (OSError, socket.timeout) as ex:
+                raise NADConnectionError(str(ex)) from ex
+
+        snapshot = {}
+        for line in payload.decode(errors="replace").splitlines():
+            if "=" not in line:
+                continue
+            command, value = line.strip().split("=", 1)
+            if command.startswith("Main."):
+                snapshot[command] = value
+
+        _LOGGER.debug("received Main? snapshot: %s", snapshot)
+        return snapshot
+
+    def _read_until_marker(self, marker: bytes) -> bytes:
+        """Read a response containing a complete marker-delimited payload."""
+        while marker not in self._buffer:
+            chunk = self._sock.recv(4096)
+            if not chunk:
+                raise NADConnectionError("Connection closed by remote host")
+            self._buffer += chunk
+            if len(self._buffer) > self._max_buffer_size:
+                raise NADConnectionError("Oversized NAD snapshot")
+
+        payload, _, self._buffer = self._buffer.partition(marker)
+        return payload
+
     def _read_reply(self, command: str) -> str:
         """Read until the reply matches the command that was sent."""
         prefix = f"{command.lower()}="

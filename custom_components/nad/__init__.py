@@ -124,9 +124,18 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
         if not self.model:
             # Open the connection by requesting the model
             try:
-                self.model = self.exec_command("Main.Model", "?")
-                self.version = self.exec_command("Main.Version", "?")
+                if isinstance(self.receiver, NADSocketClient):
+                    snapshot = self.receiver.main_snapshot()
+                    self._pending_unsolicited = snapshot
+                    self.model = snapshot.get("Main.Model")
+                    self.version = snapshot.get("Main.Version")
+                else:
+                    self.model = self.exec_command("Main.Model", "?")
+                    self.version = self.exec_command("Main.Version", "?")
             except CommandNotSupportedError:
+                return False
+
+            if not self.model:
                 return False
 
             identifiers = {(DOMAIN, self.unique_id)}
@@ -262,9 +271,23 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch data from NAD Receiver."""
         try:
-            power_state = await self.hass.async_add_executor_job(
-                self.exec_command, "Main.Power", "?"
-            )
+            if isinstance(self.receiver, NADSocketClient):
+                data = await self.hass.async_add_executor_job(
+                    self.receiver.main_snapshot
+                )
+                self._capture_unsolicited()
+                data.update(getattr(self, "_pending_unsolicited", {}))
+                self._pending_unsolicited = {}
+                power_state = data.get("Main.Power")
+            else:
+                power_state = await self.hass.async_add_executor_job(
+                    self.exec_command, "Main.Power", "?"
+                )
+
+                data = {}
+                data.update(getattr(self, "_pending_unsolicited", {}))
+                self._pending_unsolicited = {}
+                data["Main.Power"] = power_state
         except CommandNotSupportedError:
             self.power_state = None
             raise UpdateFailed("Error communicating with NAD Receiver")
@@ -282,12 +305,9 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
         else:
             self.power_state = MediaPlayerState.OFF
 
-        data = {}
-        data.update(getattr(self, "_pending_unsolicited", {}))
-        self._pending_unsolicited = {}
-        data["Main.Power"] = power_state
-
         for command in self._listener_commands:
+            if isinstance(self.receiver, NADSocketClient):
+                break
             if command not in data:
                 try:
                     data[command] = await self.hass.async_add_executor_job(
