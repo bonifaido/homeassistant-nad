@@ -183,11 +183,15 @@ class NADReceiverSwitch(CoordinatorEntity, SwitchEntity):
         """Turn the entity on."""
         _LOGGER.debug("Turning on %s", self.name)
         response = self.coordinator.exec_command(self.entity_description.key, "=", "On")
-        if response.lower() == "on":
+        if response is not None and response.strip().lower() == "on":
             self._attr_is_on = True
             self._attr_available = True
         else:
-            _LOGGER.error("Failed to switch on %s", self.name)
+            _LOGGER.error(
+                "Failed to switch on %s; receiver returned %r",
+                self.name,
+                response,
+            )
             self._attr_available = False
 
         self.async_write_ha_state()
@@ -199,11 +203,15 @@ class NADReceiverSwitch(CoordinatorEntity, SwitchEntity):
         response = self.coordinator.exec_command(
             self.entity_description.key, "=", "Off"
         )
-        if response.lower() == "off":
+        if response is not None and response.strip().lower() == "off":
             self._attr_is_on = False
             self._attr_available = True
         else:
-            _LOGGER.error("Failed to switch off %s", self.name)
+            _LOGGER.error(
+                "Failed to switch off %s; receiver returned %r",
+                self.name,
+                response,
+            )
             self._attr_available = False
 
         self.async_write_ha_state()
