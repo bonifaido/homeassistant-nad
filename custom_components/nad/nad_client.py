@@ -24,8 +24,8 @@ class NADConnectionError(Exception):
 class NADSocketClient:
     """Plain TCP client for the NAD ASCII command protocol.
 
-    Commands are framed as ``\\n{command}{operator}{value}\\r`` and replies
-    are terminated with ``\\r``, matching the behaviour observed directly
+    Commands are framed as ``\\n{command}{operator}{value}\\n`` and replies
+    are terminated with ``\\n``, matching the behaviour observed directly
     against a NAD C328 over a ser2net raw TCP bridge.
     """
 

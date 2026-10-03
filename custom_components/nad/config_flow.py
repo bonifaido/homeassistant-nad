@@ -67,6 +67,20 @@ def _volume_options_for_model(model: str) -> dict[str, int]:
         CONF_VOLUME_STEP: CONF_DEFAULT_VOLUME_STEP,
     }
 
+
+def _test_telnet_connection(host: str, port: int) -> str:
+    """Connect to a NAD receiver and query its model."""
+    client = NADSocketClient(host, port, timeout=3.0)
+    try:
+        client.connect()
+        model = client.command("Main.Model", "?")
+        if not model:
+            raise CommandNotSupportedError("No model reported")
+        return model
+    finally:
+        client.close()
+
+
 STEP_SETUP_TELNET_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_HOST): TextSelector(),
@@ -266,18 +280,14 @@ class NADReceiverConfigFlow(ConfigFlow, domain=DOMAIN):
         model = "Unknown"
 
         try:
-            # Test if we can connect to the device and get model
-            client = NADSocketClient(host, port)
-            client.connect()
-            try:
-                model = client.command("Main.Model", "?")
-                if not model:
-                    raise CommandNotSupportedError("No model reported")
-            finally:
-                client.close()
-
+            model = await self.hass.async_add_executor_job(
+                _test_telnet_connection, host, port
+            )
             _LOGGER.info("Device %s available", host)
-        except (CommandNotSupportedError, NADConnectionError):
+        except (CommandNotSupportedError, NADConnectionError, OSError) as ex:
+            _LOGGER.warning(
+                "Unable to connect to NAD receiver at %s:%s: %s", host, port, ex
+            )
             errors["base"] = "cannot_connect"
 
         # Return info that you want to store in the config entry.
