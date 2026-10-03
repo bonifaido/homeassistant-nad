@@ -39,14 +39,12 @@ For a C328 connected to `/dev/ttyUSB0`, a minimal ser2net 4 YAML connection is:
 ```yaml
 %YAML 1.1
 ---
-connection: &nad-c328
-	accepter: tcp,4000
-	enable: on
-	connector: serialdev,
-						 /dev/ttyUSB0,
-						 115200n81,local
-	options:
-		kickolduser: true
+connection:
+  accepter: tcp,4000
+  enable: on
+  connector: serialdev,/dev/ttyUSB0,115200n81,local
+  options:
+    kickolduser: true
 ```
 
 Change `/dev/ttyUSB0` to the serial device used by your bridge. Configure the NAD integration with the bridge's IP address and port `4000`, using **Telnet** (raw TCP). With `kickolduser` enabled, a new connection disconnects the existing client.
