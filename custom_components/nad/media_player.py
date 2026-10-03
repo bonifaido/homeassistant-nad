@@ -124,8 +124,8 @@ class NAD(CoordinatorEntity, MediaPlayerEntity):
             )
 
             volume = self.coordinator.data.get(self.zone + ".Volume")
-            if volume is not None and volume.lstrip("-").isnumeric():
-                volume = float(volume)
+            volume = self._parse_volume_db(volume)
+            if volume is not None:
                 self._attr_volume_level = self.calc_volume(volume)
             else:
                 # Some receivers cannot report the volume, e.g. C 356BEE,
@@ -164,8 +164,9 @@ class NAD(CoordinatorEntity, MediaPlayerEntity):
         response = await self.hass.async_add_executor_job(
             self.coordinator.exec_command, self.zone + ".Volume", "+"
         )
-        if response is not None and response.lstrip("-").isnumeric():
-            self._attr_volume_level = self.calc_volume(float(response))
+        volume = self._parse_volume_db(response)
+        if volume is not None:
+            self._attr_volume_level = self.calc_volume(volume)
             self.schedule_update_ha_state()
 
     async def async_volume_down(self) -> None:
@@ -173,8 +174,9 @@ class NAD(CoordinatorEntity, MediaPlayerEntity):
         response = await self.hass.async_add_executor_job(
             self.coordinator.exec_command, self.zone + ".Volume", "-"
         )
-        if response is not None and response.lstrip("-").isnumeric():
-            self._attr_volume_level = self.calc_volume(float(response))
+        volume = self._parse_volume_db(response)
+        if volume is not None:
+            self._attr_volume_level = self.calc_volume(volume)
             self.schedule_update_ha_state()
 
     async def async_set_volume_level(self, volume: float) -> None:
@@ -185,8 +187,9 @@ class NAD(CoordinatorEntity, MediaPlayerEntity):
             "=",
             int(self.calc_db(volume)),
         )
-        if response is not None and response.lstrip("-").isnumeric():
-            self._attr_volume_level = self.calc_volume(float(response))
+        volume_db = self._parse_volume_db(response)
+        if volume_db is not None:
+            self._attr_volume_level = self.calc_volume(volume_db)
             self.schedule_update_ha_state()
 
     async def async_mute_volume(self, mute: bool) -> None:
@@ -236,6 +239,16 @@ class NAD(CoordinatorEntity, MediaPlayerEntity):
     def source_list(self):
         """List of available input sources."""
         return list(self._reverse_mapping)
+
+    @staticmethod
+    def _parse_volume_db(value: str | None) -> float | None:
+        """Parse a volume response reported in dB."""
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except ValueError:
+            return None
 
     @property
     def available(self) -> bool:
