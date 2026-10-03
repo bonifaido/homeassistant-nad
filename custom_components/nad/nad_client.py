@@ -127,7 +127,7 @@ class NADSocketClient:
 
             try:
                 self._drain_pending_input()
-                self._sock.sendall(f"\n{cmd}\r".encode())
+                self._sock.sendall(f"\n{cmd}\n".encode())
                 reply = self._read_reply(command)
             except (OSError, socket.timeout) as ex:
                 raise NADConnectionError(str(ex)) from ex
@@ -151,7 +151,7 @@ class NADSocketClient:
 
             try:
                 self._drain_pending_input()
-                self._sock.sendall(b"\nMain?\r")
+                self._sock.sendall(b"\nMain?\n")
                 payload = self._read_until_marker(
                     b"************Main information end ************"
                 )
