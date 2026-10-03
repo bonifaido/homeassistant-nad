@@ -442,14 +442,6 @@ class NADReceiverNumber(CoordinatorEntity, NumberEntity):
 
         self._handle_coordinator_update()
 
-    @property
-    def _is_c328_brightness(self) -> bool:
-        return (
-            self.entity_description.key == "Main.Brightness"
-            and self.coordinator.model is not None
-            and self.coordinator.model.replace(" ", "").upper() == "C328"
-        )
-
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
@@ -459,8 +451,6 @@ class NADReceiverNumber(CoordinatorEntity, NumberEntity):
             if self.coordinator.data
             else None
         )
-        if self._is_c328_brightness and new_value == "4":
-            new_value = "0"
 
         if new_value is not None and new_value.lstrip("-").replace(
             ".", "", 1
@@ -487,9 +477,6 @@ class NADReceiverNumber(CoordinatorEntity, NumberEntity):
                 return
 
             command_value = int(value) if self.step >= 1 else value
-            if self._is_c328_brightness:
-                # C328 write values are rotated relative to reported levels.
-                command_value = (int(value) + 1) % 4
 
             response = self.coordinator.exec_command(
                 self.entity_description.key, "=", command_value
@@ -497,9 +484,7 @@ class NADReceiverNumber(CoordinatorEntity, NumberEntity):
             if response is not None and response.lstrip("-").replace(
                 ".", "", 1
             ).isnumeric():
-                self._attr_native_value = (
-                    value if self._is_c328_brightness else float(response)
-                )
+                self._attr_native_value = float(response)
                 self._attr_available = True
             else:
                 _LOGGER.error("Failed to set %s to %s", self.name, value)
