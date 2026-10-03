@@ -19,7 +19,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from nad_receiver import NADReceiver, NADReceiverTCP, NADReceiverTelnet
 
 from . import NADReceiverCoordinator
-from .nad_client import NADSocketClient
 from .const import (
     CONF_DEFAULT_MAX_VOLUME,
     CONF_DEFAULT_MIN_VOLUME,
@@ -32,6 +31,7 @@ from .const import (
     CONF_VOLUME_STEP,
     DOMAIN,
 )
+from .nad_client import NADSocketClient
 
 _LOGGER = logging.getLogger(__name__)
 
