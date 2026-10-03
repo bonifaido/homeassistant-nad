@@ -18,7 +18,7 @@ from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from nad_receiver import NADReceiver, NADReceiverTCP, NADReceiverTelnet
 
-from . import NADReceiverCoordinator
+from . import CommandNotSupportedError, NADReceiverCoordinator
 from .const import (
     CONF_DEFAULT_MAX_VOLUME,
     CONF_DEFAULT_MIN_VOLUME,
@@ -31,7 +31,7 @@ from .const import (
     CONF_VOLUME_STEP,
     DOMAIN,
 )
-from .nad_client import NADSocketClient
+from .nad_client import NADConnectionError, NADSocketClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -146,18 +146,97 @@ class NAD(CoordinatorEntity, MediaPlayerEntity):
         response = await self.hass.async_add_executor_job(
             self.coordinator.exec_command, self.zone + ".Power", "=", "Off"
         )
-        if response and response.lower() == "off":
+        if response and response.lower().startswith("off"):
             self._attr_state = MediaPlayerState.OFF
             self.schedule_update_ha_state()
 
     async def async_turn_on(self) -> None:
         """Turn the media player on."""
-        response = await self.hass.async_add_executor_job(
-            self.coordinator.exec_command, self.zone + ".Power", "=", "On"
-        )
-        if response and response.lower() == "on":
-            self._attr_state = MediaPlayerState.ON
+        previous_state = self._attr_state
+        previous_available = self._attr_available
+        self._attr_state = MediaPlayerState.ON
+        self._attr_available = True
+        self.async_write_ha_state()
+
+        try:
+            response = await self.hass.async_add_executor_job(
+                self.coordinator.exec_command, self.zone + ".Power", "?"
+            )
+        except (CommandNotSupportedError, NADConnectionError, OSError) as ex:
+            _LOGGER.debug("Power-state query failed before turn-on: %s", ex)
+            response = None
+
+        if response is not None and response.lower() == "on":
             self.schedule_update_ha_state()
+            return
+
+        if isinstance(self.coordinator.receiver, NADSocketClient) and _is_c328_model(
+            self.coordinator.model
+        ):
+            try:
+                await self.hass.async_add_executor_job(
+                    self.coordinator.exec_command_no_reply,
+                    self.zone + ".Power",
+                    "=",
+                    "On",
+                )
+            except (CommandNotSupportedError, NADConnectionError, OSError) as ex:
+                _LOGGER.debug("Power-on send failed; checking receiver state: %s", ex)
+                try:
+                    response = await self.hass.async_add_executor_job(
+                        self.coordinator.exec_command, self.zone + ".Power", "?"
+                    )
+                except (
+                    CommandNotSupportedError,
+                    NADConnectionError,
+                    OSError,
+                ) as query_ex:
+                    self._attr_state = previous_state
+                    self._attr_available = previous_available
+                    self.async_write_ha_state()
+                    raise HomeAssistantError(
+                        "Unable to confirm NAD receiver power"
+                    ) from query_ex
+                if response is None or response.lower() != "on":
+                    self._attr_state = previous_state
+                    self._attr_available = previous_available
+                    self.async_write_ha_state()
+                    raise HomeAssistantError("NAD receiver did not turn on") from ex
+
+            self._attr_state = MediaPlayerState.ON
+            self._attr_available = True
+            self.schedule_update_ha_state()
+            return
+
+        try:
+            response = await self.hass.async_add_executor_job(
+                self.coordinator.exec_command, self.zone + ".Power", "=", "On"
+            )
+        except (CommandNotSupportedError, NADConnectionError, OSError) as ex:
+            _LOGGER.debug("Power-on command failed; checking receiver state: %s", ex)
+            response = None
+
+        if response is None or response.lower() != "on":
+            try:
+                response = await self.hass.async_add_executor_job(
+                    self.coordinator.exec_command, self.zone + ".Power", "?"
+                )
+            except (CommandNotSupportedError, NADConnectionError, OSError) as ex:
+                self._attr_state = previous_state
+                self._attr_available = previous_available
+                self.async_write_ha_state()
+                raise HomeAssistantError("Unable to confirm NAD receiver power") from ex
+
+        if response is not None and response.lower() == "on":
+            self._attr_state = MediaPlayerState.ON
+            self._attr_available = True
+            self.schedule_update_ha_state()
+            return
+
+        self._attr_state = previous_state
+        self._attr_available = previous_available
+        self.async_write_ha_state()
+        raise HomeAssistantError("NAD receiver did not turn on")
 
     async def async_volume_up(self) -> None:
         """Volume up the media player."""

@@ -115,8 +115,15 @@ class NADSocketClient:
         finally:
             self._sock.settimeout(original_timeout)
 
-    def command(self, command: str, operator: str, value=None) -> Optional[str]:
-        """Send a command and return the value from the reply, or None."""
+    def command(
+        self,
+        command: str,
+        operator: str,
+        value=None,
+        *,
+        wait_for_reply: bool = True,
+    ) -> Optional[str]:
+        """Send a command and optionally wait for its reply."""
         with self._lock:
             if self._sock is None:
                 raise NADConnectionError("Not connected")
@@ -128,6 +135,8 @@ class NADSocketClient:
             try:
                 self._drain_pending_input()
                 self._sock.sendall(f"\n{cmd}\n".encode())
+                if not wait_for_reply:
+                    return None
                 reply = self._read_reply(command)
             except (OSError, socket.timeout) as ex:
                 raise NADConnectionError(str(ex)) from ex

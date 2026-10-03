@@ -276,6 +276,24 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
 
         return None
 
+    def exec_command_no_reply(self, command: str, operator: str, value=None):
+        """Send a raw TCP command without waiting for a device acknowledgement."""
+        if not isinstance(self.receiver, NADSocketClient):
+            return self.exec_command(command, operator, value)
+
+        for attempt in (1, 2):
+            try:
+                self.receiver.command(command, operator, value, wait_for_reply=False)
+                self._capture_unsolicited()
+                return None
+            except Exception as ex:  # noqa: BLE001
+                if attempt == 2:
+                    raise CommandNotSupportedError() from ex
+                _LOGGER.debug("Connection error (%s), reconnecting", ex)
+                self._reconnect()
+
+        return None
+
     def _capture_unsolicited(self) -> None:
         """Merge unsolicited NAD state into the next coordinator update."""
         if isinstance(self.receiver, NADSocketClient):

@@ -1,3 +1,4 @@
+import asyncio
 import socket
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -62,6 +63,31 @@ def test_unsupported_command_returns_none_without_waiting_for_timeout():
     client, _ = socket_client(b"Wrong Command\r\n")
 
     assert client.command("DSP.Version", "?") is None
+
+
+def test_command_can_send_without_waiting_for_acknowledgement():
+    client, fake_socket = socket_client(b"")
+
+    assert client.command("Main.Power", "=", "On", wait_for_reply=False) is None
+    assert fake_socket.sent == [b"\nMain.Power=On\n"]
+
+
+def test_coordinator_can_send_power_command_without_reply():
+    client, fake_socket = socket_client(b"")
+    coordinator = SimpleNamespace(
+        receiver=client,
+        _capture_unsolicited=Mock(),
+        _reconnect=Mock(),
+    )
+
+    assert (
+        NADReceiverCoordinator.exec_command_no_reply(
+            coordinator, "Main.Power", "=", "On"
+        )
+        is None
+    )
+    assert fake_socket.sent == [b"\nMain.Power=On\n"]
+    coordinator._capture_unsolicited.assert_called_once()
 
 
 def test_main_snapshot_parses_c328_state():
@@ -191,6 +217,141 @@ def test_volume_db_parser_accepts_decimal_c328_value():
     ) == pytest.approx(32 / 92)
     assert NAD._parse_volume_db("not-a-volume") is None
     assert NAD._parse_volume_db(None) is None
+
+
+@pytest.mark.asyncio
+async def test_power_on_updates_state_before_receiver_acknowledges():
+    command_started = asyncio.Event()
+    allow_response = asyncio.Event()
+
+    class DelayedHass:
+        responses = iter(("Off", "On"))
+
+        async def async_add_executor_job(self, _target, *_args):
+            command_started.set()
+            await allow_response.wait()
+            return next(self.responses)
+
+    player = SimpleNamespace(
+        hass=DelayedHass(),
+        coordinator=SimpleNamespace(
+            model="Other",
+            receiver=object(),
+            exec_command=Mock(),
+            exec_command_no_reply=Mock(),
+        ),
+        zone="Main",
+        _attr_state=MediaPlayerState.OFF,
+        _attr_available=True,
+        async_write_ha_state=Mock(),
+        schedule_update_ha_state=Mock(),
+    )
+
+    turn_on = asyncio.create_task(NAD.async_turn_on(player))
+    await command_started.wait()
+
+    assert player._attr_state == MediaPlayerState.ON
+    player.async_write_ha_state.assert_called_once()
+
+    allow_response.set()
+    await turn_on
+
+
+@pytest.mark.asyncio
+async def test_power_on_verifies_state_when_acknowledgement_is_lost():
+    player = SimpleNamespace(
+        hass=SimpleNamespace(
+            async_add_executor_job=AsyncMock(
+                side_effect=[
+                    "Off",
+                    CommandNotSupportedError("connection closed after power command"),
+                    "On",
+                ]
+            )
+        ),
+        coordinator=SimpleNamespace(
+            model="Other",
+            receiver=object(),
+            exec_command=Mock(),
+            exec_command_no_reply=Mock(),
+        ),
+        zone="Main",
+        _attr_state=MediaPlayerState.OFF,
+        _attr_available=True,
+        async_write_ha_state=Mock(),
+        schedule_update_ha_state=Mock(),
+    )
+
+    await NAD.async_turn_on(player)
+
+    assert player.hass.async_add_executor_job.call_count == 3
+    assert player._attr_state == MediaPlayerState.ON
+
+
+@pytest.mark.asyncio
+async def test_c328_power_on_does_not_wait_for_acknowledgement():
+    class ImmediateHass:
+        async def async_add_executor_job(self, target, *args):
+            return target(*args)
+
+    coordinator = SimpleNamespace(
+        model="C328",
+        receiver=NADSocketClient("127.0.0.1", 1),
+        exec_command=Mock(return_value="Off"),
+        exec_command_no_reply=Mock(return_value=None),
+    )
+    player = SimpleNamespace(
+        hass=ImmediateHass(),
+        coordinator=coordinator,
+        zone="Main",
+        _attr_state=MediaPlayerState.OFF,
+        _attr_available=True,
+        async_write_ha_state=Mock(),
+        schedule_update_ha_state=Mock(),
+    )
+
+    await NAD.async_turn_on(player)
+
+    coordinator.exec_command.assert_called_once_with("Main.Power", "?")
+    coordinator.exec_command_no_reply.assert_called_once_with("Main.Power", "=", "On")
+    assert player._attr_state == MediaPlayerState.ON
+
+
+@pytest.mark.asyncio
+async def test_power_off_accepts_extended_c328_acknowledgement():
+    player = SimpleNamespace(
+        hass=SimpleNamespace(
+            async_add_executor_job=AsyncMock(return_value="Off@NetWorkSBMode")
+        ),
+        coordinator=SimpleNamespace(exec_command=Mock()),
+        zone="Main",
+        _attr_state=MediaPlayerState.ON,
+        schedule_update_ha_state=Mock(),
+    )
+
+    await NAD.async_turn_off(player)
+
+    assert player._attr_state == MediaPlayerState.OFF
+
+
+@pytest.mark.asyncio
+async def test_power_on_skips_redundant_write_when_receiver_is_already_on():
+    player = SimpleNamespace(
+        hass=SimpleNamespace(async_add_executor_job=AsyncMock(return_value="On")),
+        coordinator=SimpleNamespace(exec_command=Mock()),
+        zone="Main",
+        _attr_state=MediaPlayerState.OFF,
+        _attr_available=True,
+        async_write_ha_state=Mock(),
+        schedule_update_ha_state=Mock(),
+    )
+
+    await NAD.async_turn_on(player)
+
+    player.hass.async_add_executor_job.assert_awaited_once_with(
+        player.coordinator.exec_command, "Main.Power", "?"
+    )
+    assert player._attr_state == MediaPlayerState.ON
 
 
 def test_telnet_probe_closes_client_when_query_is_unsupported(monkeypatch):
