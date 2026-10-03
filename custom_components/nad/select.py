@@ -31,7 +31,16 @@ async def async_setup_entry(
             SelectEntityDescription(
                 key="Main.Source",
                 name="Source",
-                options=["TV", "PHONO", "COAX1", "COAX2", "OPT1", "OPT2", "STREAM", "BT"],
+                options=[
+                    "TV",
+                    "PHONO",
+                    "COAX1",
+                    "COAX2",
+                    "OPT1",
+                    "OPT2",
+                    "STREAM",
+                    "BT",
+                ],
             ),
         ]
     else:
@@ -80,7 +89,13 @@ async def async_setup_entry(
             SelectEntityDescription(
                 key="Main.ListeningMode.DolbyDigital",
                 name="Dolby Digital Listening Mode",
-                options=["None", "PLIIMovie", "PLIIMusic", "SurroundEX", "StereoDownmix"],
+                options=[
+                    "None",
+                    "PLIIMovie",
+                    "PLIIMusic",
+                    "SurroundEX",
+                    "StereoDownmix",
+                ],
                 entity_category=EntityCategory.CONFIG,
                 entity_registry_enabled_default=False,
             ),
@@ -307,9 +322,7 @@ class NADReceiverSelect(CoordinatorEntity, SelectEntity):
                     current_option,
                 )
                 self._attr_available = False
-                raise HomeAssistantError(
-                    f"Unable to select {option} on {self.name}"
-                )
+                raise HomeAssistantError(f"Unable to select {option} on {self.name}")
 
             self._attr_current_option = current_option
             self._attr_available = True

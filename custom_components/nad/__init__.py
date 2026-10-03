@@ -24,8 +24,6 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from nad_receiver import NADReceiver, NADReceiverTCP, NADReceiverTelnet
 
-from .nad_client import NADConnectionError, NADSocketClient
-
 from .const import (
     CONF_SERIAL_PORT,
     CONF_TYPE_SERIAL,
@@ -33,6 +31,7 @@ from .const import (
     CONF_TYPE_TELNET,
     DOMAIN,
 )
+from .nad_client import NADConnectionError, NADSocketClient
 
 _LOGGER = logging.getLogger(__name__)
 
