@@ -120,6 +120,15 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
         self._close_receiver()
         self.receiver = self._create_receiver()
 
+    def _main_snapshot_with_reconnect(self) -> dict[str, str]:
+        """Fetch a C328 snapshot, reconnecting once if the socket was dropped."""
+        try:
+            return self.receiver.main_snapshot()
+        except NADConnectionError as ex:
+            _LOGGER.debug("Main? snapshot failed (%s), reconnecting", ex)
+            self._reconnect()
+            return self.receiver.main_snapshot()
+
     async def connect(self) -> bool:
         if not self.model:
             # Open the connection by requesting the model
@@ -283,7 +292,7 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
         try:
             if isinstance(self.receiver, NADSocketClient):
                 data = await self.hass.async_add_executor_job(
-                    self.receiver.main_snapshot
+                    self._main_snapshot_with_reconnect
                 )
                 self._capture_unsolicited()
                 data.update(getattr(self, "_pending_unsolicited", {}))
@@ -301,7 +310,7 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
         except CommandNotSupportedError:
             self.power_state = None
             raise UpdateFailed("Error communicating with NAD Receiver")
-        except IOError as ex:
+        except (NADConnectionError, IOError) as ex:
             self.power_state = None
             raise UpdateFailed("Error communicating with NAD Receiver", ex)
 
