@@ -199,6 +199,8 @@ class NADSocketClient:
             reply = line.strip().decode(errors="replace")
             if reply.lower().startswith(prefix):
                 return reply
+            if reply.lower() == "wrong command":
+                return reply
 
             _LOGGER.debug(
                 "Discarding unsolicited NAD text while waiting for %s: %s",

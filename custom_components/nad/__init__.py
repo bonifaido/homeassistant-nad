@@ -216,6 +216,10 @@ class NADReceiverCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("%s not supported", command)
             return False
 
+        if response is None:
+            _LOGGER.debug("%s returned no value", command)
+            return False
+
         _LOGGER.debug("%s supported", command)
         if not self.data:
             self.data = {}
