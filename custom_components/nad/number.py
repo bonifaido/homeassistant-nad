@@ -442,6 +442,14 @@ class NADReceiverNumber(CoordinatorEntity, NumberEntity):
 
         self._handle_coordinator_update()
 
+    @property
+    def _is_c328_brightness(self) -> bool:
+        return (
+            self.entity_description.key == "Main.Brightness"
+            and self.coordinator.model is not None
+            and self.coordinator.model.replace(" ", "").upper() == "C328"
+        )
+
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
@@ -451,6 +459,13 @@ class NADReceiverNumber(CoordinatorEntity, NumberEntity):
             if self.coordinator.data
             else None
         )
+        if self._is_c328_brightness and new_value is not None:
+            try:
+                # C328 write acknowledgements use the requested value, while
+                # snapshots report the preceding level.
+                new_value = str((int(new_value) + 1) % 4)
+            except ValueError:
+                pass
 
         if new_value is not None and new_value.lstrip("-").replace(
             ".", "", 1
